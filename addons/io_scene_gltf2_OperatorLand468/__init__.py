@@ -13,16 +13,16 @@
 # limitations under the License.
 
 bl_info = {
-    'name': 'glTF 2.0 format',
-    'author': 'Julien Duroure, Scurest, Norbert Nopper, Urs Hanselmann, Moritz Becher, Benjamin Schmithüsen, Jim Eckerlein, and many external contributors',
-    "version": (1, 4, 32),
+    'name': 'glTF 2.0 format A32NX OPLand',
+    'author': 'David "AdenFlorian", Alex "OperatorLand468" Julien Duroure, Scurest, Norbert Nopper, Urs Hanselmann, Moritz Becher, Benjamin Schmithüsen, Jim Eckerlein, and many external contributors',
+    "version": (1, 4, 321),
     'blender': (2, 91, 0),
     'location': 'File > Import-Export',
     'description': 'Import-Export as glTF 2.0',
     'warning': '',
     'doc_url': "{BLENDER_MANUAL_URL}/addons/import_export/scene_gltf2.html",
     'tracker_url': "https://github.com/KhronosGroup/glTF-Blender-IO/issues/",
-    'support': 'OFFICIAL',
+    'support': 'COMMUNITY',
     'category': 'Import-Export',
 }
 
@@ -59,9 +59,10 @@ from bpy.props import (StringProperty,
                        EnumProperty,
                        IntProperty,
                        CollectionProperty)
-from bpy.types import Operator
+from bpy.types import Operator, AddonPreferences
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
+import pathlib
 
 #
 #  Functions / Classes.
@@ -109,7 +110,7 @@ class ExportGLTF2_Base:
             'Output format and embedding options. Binary is most efficient, '
             'but JSON (embedded or separate) may be easier to edit later'
         ),
-        default='GLB',
+        default='GLTF_SEPARATE',
         update=on_export_format_changed,
     )
 
@@ -874,8 +875,8 @@ class GLTF_PT_export_user_extensions(bpy.types.Panel):
 
 class ExportGLTF2(bpy.types.Operator, ExportGLTF2_Base, ExportHelper):
     """Export scene as glTF 2.0 file"""
-    bl_idname = 'export_scene.gltf'
-    bl_label = 'Export glTF 2.0'
+    bl_idname = 'export_scene.gltfa32nxOPLand'
+    bl_label = 'Export glTF 2.0 A32NX OPLand'
 
     filename_ext = ''
 
@@ -883,13 +884,13 @@ class ExportGLTF2(bpy.types.Operator, ExportGLTF2_Base, ExportHelper):
 
 
 def menu_func_export(self, context):
-    self.layout.operator(ExportGLTF2.bl_idname, text='glTF 2.0 (.glb/.gltf)')
+    self.layout.operator(ExportGLTF2.bl_idname, text='glTF 2.0 (.glb/.gltf) A32NX OPLand')
 
 
 class ImportGLTF2(Operator, ImportHelper):
-    """Load a glTF 2.0 file"""
-    bl_idname = 'import_scene.gltf'
-    bl_label = 'Import glTF 2.0'
+    """Load a glTF 2.0 A32NX file"""
+    bl_idname = 'import_scene.gltf32nxOPLand'
+    bl_label = 'Import glTF 2.0 A32NX OPLand'
     bl_options = {'REGISTER', 'UNDO'}
 
     filter_glob: StringProperty(default="*.glb;*.gltf", options={'HIDDEN'})
@@ -929,6 +930,12 @@ class ImportGLTF2(Operator, ImportHelper):
         description="How normals are computed during import",
         default="NORMALS")
 
+    texture_folder_name = StringProperty(
+        name="Texture name",
+        description="texture folder name",
+        default="TEXTURE"
+    )
+
     bone_heuristic: EnumProperty(
         name="Bone Dir",
         items=(
@@ -967,6 +974,7 @@ class ImportGLTF2(Operator, ImportHelper):
         layout.prop(self, 'import_pack_images')
         layout.prop(self, 'merge_vertices')
         layout.prop(self, 'import_shading')
+        layout.prop(self, 'texture_folder_name')
         layout.prop(self, 'guess_original_bind_pose')
         layout.prop(self, 'bone_heuristic')
 
@@ -979,20 +987,23 @@ class ImportGLTF2(Operator, ImportHelper):
         self.set_debug_log()
         import_settings = self.as_keywords()
 
+        preferences = context.preferences
+        addon_prefs = preferences.addons[__name__].preferences
+
         if self.files:
             # Multiple file import
             ret = {'CANCELLED'}
             dirname = os.path.dirname(self.filepath)
             for file in self.files:
                 path = os.path.join(dirname, file.name)
-                if self.unit_import(path, import_settings) == {'FINISHED'}:
+                if self.unit_import(path, import_settings, addon_prefs) == {'FINISHED'}:
                     ret = {'FINISHED'}
             return ret
         else:
             # Single file import
-            return self.unit_import(self.filepath, import_settings)
+            return self.unit_import(self.filepath, import_settings, addon_prefs)
 
-    def unit_import(self, filename, import_settings):
+    def unit_import(self, filename, import_settings, addon_prefs):
         import time
         from .io.imp.gltf2_io_gltf import glTFImporter
         from .blender.imp.gltf2_blender_gltf import BlenderGlTF
@@ -1008,9 +1019,9 @@ class ImportGLTF2(Operator, ImportHelper):
             return {'CANCELLED'}
         print("Data are loaded, start creating Blender stuff")
         start_time = time.time()
-        BlenderGlTF.create(self.gltf_importer)
+        BlenderGlTF.create(self.gltf_importer, self.report, addon_prefs, self.texture_folder_name, self.filepath)
         elapsed_s = "{:.2f}s".format(time.time() - start_time)
-        print("glTF import finished in " + elapsed_s)
+        print("A32NX OPLand glTF import finished in " + elapsed_s)
         self.gltf_importer.log.removeHandler(self.gltf_importer.log_handler)
 
         return {'FINISHED'}
@@ -1028,9 +1039,71 @@ class ImportGLTF2(Operator, ImportHelper):
         else:
             self.loglevel = logging.NOTSET
 
+def path_good(path: pathlib.Path) -> bool:
+    return path.name == 'texconv.exe' and path.exists()
+
+# Original is from https://github.com/bestdani/msfs2blend
+class A32NXImporterExporter(AddonPreferences):
+    bl_idname = __name__
+
+    texconv_file: StringProperty(
+        name="Folder path",
+        description="absolute path to Microsoft texconv tool",
+        default="",
+        subtype="FILE_PATH"
+    )
+
+    texture_target_dir: StringProperty(
+        name="Folder path",
+        description="location where converted textures get saved in their "
+                    "subfolders",
+        default="",
+        subtype="DIR_PATH"
+    )
+
+    textures_allowed: BoolProperty(options={'HIDDEN'})
+
+    def draw(self, context):
+        layout = self.layout
+        box = layout.box()
+        row = box.row()
+        row.label(text="Microsoft Texconv Tool")
+        row = box.row()
+        row.label(text="Required to enable importing textures.")
+        row = box.row()
+        row.label(
+            text="This tool automatically converts DDS images for usage "
+                 "inside of blender")
+        row = box.row()
+        row.operator("wm.url_open", text="Download texconv.exe").url = \
+            "https://github.com/microsoft/DirectXTex/releases"
+        row = box.row()
+        row.prop(self, "texconv_file", text="Path to downloaded texconv.exe")
+        texconv_path = pathlib.Path(self.texconv_file)
+
+        self.textures_allowed = True
+        if not path_good(texconv_path):
+            self.textures_allowed = False
+            row = box.row()
+            row.label(
+                text="No texconv.exe file has been selected. Texture import "
+                     "is disabled.",
+                icon='ERROR')
+        row = box.row()
+        row.prop(self, "texture_target_dir",
+                 text="Base path for converted textures")
+        target_path = pathlib.Path(self.texture_target_dir)
+        if self.texture_target_dir == "" or not target_path.exists() or not \
+                target_path.is_dir():
+            self.textures_allowed = False
+            row = box.row()
+            row.label(
+                text="No valid conversion path path entered. Texture import "
+                     "is disabled.",
+                icon='ERROR')
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportGLTF2.bl_idname, text='glTF 2.0 (.glb/.gltf)')
+    self.layout.operator(ImportGLTF2.bl_idname, text='glTF 2.0 (.glb/.gltf) A32NX OPLand')
 
 
 classes = (
